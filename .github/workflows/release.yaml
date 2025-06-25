@@ -1,8 +1,8 @@
 name: Publish Release Assets
 
+# 改为手动触发
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
 
 permissions:
   id-token: write
@@ -13,6 +13,9 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # ----------------------------------------------------
+  # 构建作业：现在只负责编译和保存构件
+  # ----------------------------------------------------
   linux:
     runs-on: ubuntu-latest
     steps:
@@ -25,15 +28,13 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: 'target/release/raphael-xiv'
-      - name: Upload Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 不再上传到 release，而是作为工作流构件保存
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ github.event.release.upload_url }} 
-          asset_path: ./target/release/raphael-xiv
-          asset_name: raphael_x86_64_linux
-          asset_content_type: application/octet-stream
+          name: raphael_x86_64_linux
+          path: target/release/raphael-xiv
+
   linux-cli:
     runs-on: ubuntu-latest
     steps:
@@ -46,15 +47,12 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: 'target/release/raphael-cli'
-      - name: Upload Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 不再上传到 release，而是作为工作流构件保存
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ github.event.release.upload_url }} 
-          asset_path: ./target/release/raphael-cli
-          asset_name: raphael-cli_x86_64_linux
-          asset_content_type: application/octet-stream
+          name: raphael-cli_x86_64_linux
+          path: target/release/raphael-cli
 
   windows:
     runs-on: windows-latest
@@ -68,15 +66,13 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: 'target/release/raphael-xiv.exe'
-      - name: Upload Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 不再上传到 release，而是作为工作流构件保存
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ github.event.release.upload_url }} 
-          asset_path: ./target/release/raphael-xiv.exe
-          asset_name: raphael_x86_64_windows.exe
-          asset_content_type: application/octet-stream
+          name: raphael_x86_64_windows.exe
+          path: target/release/raphael-xiv.exe
+
   windows-cli:
     runs-on: windows-latest
     steps:
@@ -89,13 +85,34 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: 'target/release/raphael-cli.exe'
-      - name: Upload Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 不再上传到 release，而是作为工作流构件保存
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ github.event.release.upload_url }} 
-          asset_path: ./target/release/raphael-cli.exe
-          asset_name: raphael-cli_x86_64_windows.exe
-          asset_content_type: application/octet-stream
-          
+          name: raphael-cli_x86_64_windows.exe
+          path: target/release/raphael-cli.exe
+
+  # ----------------------------------------------------
+  # 发布作业：等待所有构建完成后，创建 Release 并上传所有文件
+  # ----------------------------------------------------
+  publish:
+    runs-on: ubuntu-latest
+    # 'needs'确保此作业在所有构建作业成功后才运行
+    needs: [linux, linux-cli, windows, windows-cli]
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          # 将所有构件下载到 'dist' 目录
+          path: dist
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          # 自动生成基于日期的 tag, 例如 release-2024-06-25-16-11-20
+          tag_name: "release-${{ github.run_id }}-${{ github.run_number }}"
+          # 自动生成 Release Notes
+          generate_release_notes: true
+          # 将 'dist' 目录下的所有文件都上传
+          files: |
+            dist/**/*
